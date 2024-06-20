@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model componentes {
+  id                                     String                                   @id @db.VarChar(40)
+  code                                   String?                                  @db.VarChar(200)
+  name                                   String?                                  @db.VarChar(200)
+  measures                               String?                                  @db.VarChar(50)
+  category                               String?                                  @db.VarChar(40)
+  registration_date                      DateTime?                                @default(now()) @db.Timestamp(6)
+  stock                                  Int?                                     @default(0)
+  lote                                   String?                                  @db.VarChar(45)
+  user_id                                String?                                  @db.Uuid
+  remission_stock                        Int?                                     @default(0)
+  caducidad                              DateTime?                                @db.Timestamp(6)
+  componentes_categories                 componentes_categories?                  @relation(fields: [category], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                                  users?                                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  componentes_has_componentes_remisiones componentes_has_componentes_remisiones[]
+  componentes_inventory                  componentes_inventory[]
+  componentes_used                       componentes_used[]
+}
+
+model componentes_categories {
+  id          String        @id @db.VarChar(40)
+  name        String?       @db.VarChar(50)
+  new_id      Int           @default(autoincrement())
+  componentes componentes[]
+}
+
+model componentes_has_componentes_remisiones {
+  id                     String                  @id @db.Uuid
+  componente_id          String?                 @db.VarChar(40)
+  remision_id            String?                 @db.Uuid
+  quantity               Int?
+  componentes            componentes?            @relation(fields: [componente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  componentes_remisiones componentes_remisiones? @relation(fields: [remision_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model componentes_inventory {
+  id               String       @id @db.Uuid
+  componente_id    String?      @db.VarChar(40)
+  quantity         Int
+  tipo_movimiento  String       @db.VarChar(8)
+  fecha_movimiento DateTime?    @default(now()) @db.Timestamp(6)
+  hospital_id      Int?
+  componentes      componentes? @relation(fields: [componente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model componentes_remisiones {
+  id                                     String                                   @id @db.Uuid
+  registration_date                      DateTime?                                @default(now()) @db.Timestamp(6)
+  name                                   String?                                  @db.VarChar(30)
+  codigo                                 String?                                  @db.VarChar(30)
+  user_id                                String?                                  @db.Uuid
+  hospital_id                            Int?
+  encargado                              String?                                  @db.VarChar(45)
+  client                                 String?                                  @db.VarChar(45)
+  status                                 String?                                  @default("En proceso") @db.VarChar(15)
+  date_remission                         DateTime?                                @db.Timestamp(6)
+  componentes_has_componentes_remisiones componentes_has_componentes_remisiones[]
+  hospitals                              hospitals?                               @relation(fields: [hospital_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                                  users?                                   @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model componentes_used {
+  id                String       @id @db.VarChar(45)
+  componente_id     String?      @db.VarChar(45)
+  registration_date DateTime?    @default(now()) @db.Timestamp(6)
+  hospital_id       Int?
+  patient           String?      @db.VarChar(45)
+  quantity          Int?         @default(0)
+  user_id           String?      @db.Uuid
+  used_date         DateTime?    @db.Timestamp(6)
+  componentes       componentes? @relation(fields: [componente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users             users?       @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  hospitals         hospitals?   @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_hospital_id")
+}
+
+model hospitals {
+  id                     Int                      @id @default(autoincrement())
+  name                   String?                  @db.VarChar(45)
+  registration_date      DateTime?                @default(now()) @db.Timestamp(6)
+  user_id                String?                  @db.Uuid
+  componentes_remisiones componentes_remisiones[]
+  componentes_used       componentes_used[]
+  users                  users?                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model surgeries {
+  id                String    @id @db.Uuid
+  name              String?   @db.VarChar(100)
+  user_id           String?   @db.Uuid
+  registration_date DateTime? @default(now()) @db.Timestamp(6)
+  users             users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model users {
+  id                     String                   @id @db.Uuid
+  name                   String?                  @db.VarChar(45)
+  lastname               String?                  @db.VarChar(45)
+  email                  String?                  @unique @db.VarChar(120)
+  role                   String?                  @default("user")
+  registration_date      DateTime?                @default(now()) @db.Timestamp(6)
+  password               String?                  @db.VarChar(60)
+  active                 Boolean?                 @default(false)
+  avatar                 String?                  @db.VarChar(350)
+  componentes            componentes[]
+  componentes_remisiones componentes_remisiones[]
+  componentes_used       componentes_used[]
+  hospitals              hospitals[]
+  surgeries              surgeries[]
+}

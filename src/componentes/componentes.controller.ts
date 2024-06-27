@@ -261,21 +261,29 @@ export class ComponentesController {
     return new ResponseSuccess<{}>('Remission OK', remission);
   }
 
+  // borrar remision y devolver stock a componentes
   @Delete('remission/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   removeRemission(@Param('id') id: string) {
     return this.componentesService.removeRemission(id);
   }
 
-  @Post('remission/finalize/:id')
+  // borrar remision sin afectar stock de componentes
+  @Delete('remission/drop/:idRemission')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  dropRemission(@Param('idRemission') idRemission: string) {
+    return this.componentesService.deleteRemissionWhitoutStock(idRemission);
+  }
+
+  @Post('remission/finalize/:idRemission')
   @HttpCode(HttpStatus.OK)
   finalizeRemission(
-    @Param('id') id: string,
+    @Param('idRemission') idRemission: string,
     @Req() request: any,
     @Body() components: FinalizeRemissionDto,
   ) {
     return this.componentesService.finalizeRemission(
-      id,
+      idRemission,
       request.user.sub,
       components.componentes,
     );

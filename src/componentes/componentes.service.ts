@@ -745,7 +745,7 @@ export class ComponentesService {
   async createRemission(remission: CreateRemissionDto, user_id_req: string) {
     const idRemission = uuid();
     const dateNow = new Date();
-    const dateRemission = `${remission.date_remission}T12:00:00Z`
+    const dateRemission = `${remission.date_remission}T12:00:00Z`;
     const countRemissions = await this.prisma.componentes_remisiones.count();
     const codigo = `OLTREM${dateNow.getDay()}${dateNow.getMonth() + 1}${new Date().getFullYear()}-${
       countRemissions + 1
@@ -894,6 +894,8 @@ export class ComponentesService {
     });
   }
 
+  // Esta funcion se utiliza para cancelar una remision y devolver los componentes al stock
+  // Para borrar una remision sin devolver los componentes al stock, se debe utilizar la funcion "deleteRemissionWhitoutStock"
   async removeRemission(id: string) {
     await this.prisma.$transaction(async (prisma) => {
       // Get components in remission
@@ -965,114 +967,158 @@ export class ComponentesService {
     });
   }
 
-  async finalizeRemission(id, user_created_id, components) {
-    await this.prisma.$transaction(async (prisma) => {
-      // Step 1: Update status remission
-      await prisma.componentes_remisiones.update({
-        where: {
-          id,
-        },
-        data: {
-          status: 'Finalizado',
-        },
-      });
+  // Esta funcion se usa para borrar la remission SIN DEVOLVER los componentes al stock
+  async deleteRemissionWhitoutStock(id: string) {
+    await this.prisma.componentes_has_componentes_remisiones.deleteMany({
+      where: {
+        remision_id: id,
+      },
+    });
 
-      // Step 2: Update stock components
-      for (const component of components) {
-        const quantityRemission = component.remission_quantity;
-        const quantityDelivered = component.quantity_delivered;
+    return this.prisma.componentes_remisiones.delete({
+      where: {
+        id,
+      },
+    });
+  }
 
-        const stocksComponent = await prisma.componentes.findUnique({
-          where: {
-            id: component.id,
-          },
-          select: {
-            stock: true,
-            remission_stock: true,
-          },
-        });
+  async finalizeRemission(idRemission, user_created_id, components) {
+    await this.prisma.$transaction(
+      async (prisma) => {
+        const updates = [];
+        const inventoryMovements = [];
+        const componentUses = [];
 
-        const newStock = stocksComponent.stock + quantityDelivered;
+        for (const component of components) {
+          const quantityRemission = component.remission_quantity;
+          const quantityDelivered = component.quantity_delivered;
 
-        await prisma.componentes.update({
-          where: {
-            id: component.id,
-          },
-          data: {
-            stock: newStock,
-            remission_stock:
-              stocksComponent.remission_stock - quantityRemission,
-          },
-        });
-
-        // Add movement in inventory
-        await prisma.componentes_inventory.create({
-          data: {
-            id: uuid(),
-            quantity: quantityDelivered,
-            tipo_movimiento: TipoMovimiento.ENTRADA,
-            componentes: {
-              connect: {
-                id: component.id,
-              },
-            },
-          },
-        });
-
-        // Add loss in components
-
-        const lossAmount = quantityRemission - quantityDelivered;
-
-        if (lossAmount > 0) {
-          const remission = await prisma.componentes_remisiones.findUnique({
+          const componentOnDataBase = await prisma.componentes.findUnique({
             where: {
-              id,
+              id: component.id,
             },
             select: {
-              codigo: true,
-              user_id: true,
+              stock: true,
+              remission_stock: true,
             },
           });
-          await prisma.componentes_used.create({
-            data: {
-              id: uuid(),
-              quantity: lossAmount,
-              patient: `Remisión ${remission.codigo}`,
-              used_date: new Date(),
-              componentes: {
-                connect: {
-                  id: component.id,
-                },
-              },
-              users: {
-                connect: {
-                  id: remission.user_id,
-                },
-              },
-              hospitals: {
-                connect: {
-                  id: component.hospital_id,
-                },
-              },
-            },
-          });
-        }
 
-        // Add movement in inventory
-        await prisma.componentes_inventory.create({
-          data: {
-            id: uuid(),
-            quantity: lossAmount,
-            tipo_movimiento: TipoMovimiento.SALIDA,
-            componentes: {
-              connect: {
+          if (!componentOnDataBase) {
+            throw new Error(`Component with ID ${component.id} not found`);
+          }
+
+          const newStock = componentOnDataBase.stock + quantityDelivered;
+          const newStockRemission =
+            componentOnDataBase.remission_stock - quantityRemission;
+
+          updates.push(
+            prisma.componentes.update({
+              where: {
                 id: component.id,
               },
-            },
+              data: {
+                stock: newStock,
+                remission_stock: newStockRemission,
+              },
+            }),
+          );
+
+          inventoryMovements.push(
+            prisma.componentes_inventory.create({
+              data: {
+                id: uuid(),
+                quantity: quantityDelivered,
+                tipo_movimiento: TipoMovimiento.ENTRADA,
+                componentes: {
+                  connect: {
+                    id: component.id,
+                  },
+                },
+              },
+            }),
+          );
+
+          const lossAmount = quantityRemission - quantityDelivered;
+          if (lossAmount > 0) {
+            const remission = await prisma.componentes_remisiones.findUnique({
+              where: {
+                id: idRemission,
+              },
+              select: {
+                codigo: true,
+                user_id: true,
+                hospital_id: true,
+              },
+            });
+
+            if (!remission) {
+              throw new Error(`Remission with ID ${idRemission} not found`);
+            }
+
+            componentUses.push(
+              prisma.componentes_used.create({
+                data: {
+                  id: uuid(),
+                  quantity: lossAmount,
+                  patient: `Remisión ${remission.codigo}`,
+                  used_date: new Date(),
+                  componentes: {
+                    connect: {
+                      id: component.id,
+                    },
+                  },
+                  users: {
+                    connect: {
+                      id: remission.user_id,
+                    },
+                  },
+                  hospitals: {
+                    connect: {
+                      id: remission.hospital_id,
+                    },
+                  },
+                },
+              }),
+            );
+
+            inventoryMovements.push(
+              prisma.componentes_inventory.create({
+                data: {
+                  id: uuid(),
+                  quantity: lossAmount,
+                  tipo_movimiento: TipoMovimiento.SALIDA,
+                  componentes: {
+                    connect: {
+                      id: component.id,
+                    },
+                  },
+                },
+              }),
+            );
+          }
+        }
+
+        // Ejecutar todas las actualizaciones y movimientos en lote
+        await Promise.all([
+          ...updates,
+          ...inventoryMovements,
+          ...componentUses,
+        ]);
+
+        // Actualizar el estado de la remisión después de completar todas las operaciones anteriores
+        await prisma.componentes_remisiones.update({
+          where: {
+            id: idRemission,
+          },
+          data: {
+            status: 'Finalizado',
           },
         });
-      }
-    });
+      },
+      {
+        timeout: 30000,
+      },
+    );
   }
 
   async getComponentesByCategory() {
@@ -1245,7 +1291,8 @@ export class ComponentesService {
 
     // update stock component
     const newStock = component.stock + componentRemission.quantity;
-    const newRemissionStock = component.remission_stock - componentRemission.quantity;
+    const newRemissionStock =
+      component.remission_stock - componentRemission.quantity;
     await this.prisma.componentes.update({
       where: {
         id: componentRemission.componente_id,

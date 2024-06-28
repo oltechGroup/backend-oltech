@@ -7,6 +7,7 @@ import { HospitalsModule } from './hospitals/hospitals.module';
 import { PartidasModule } from './partidas/partidas.module';
 import { SurgeriesModule } from './surgeries/surgeries.module';
 import { UsersModule } from './users/users.module';
+import { CompranetModule } from './compranet/compranet.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { UsersModule } from './users/users.module';
     PartidasModule,
     SurgeriesModule,
     UsersModule,
+    CompranetModule,
   ],
   controllers: [AppController],
   providers: [AppService],

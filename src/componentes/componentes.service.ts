@@ -964,7 +964,7 @@ export class ComponentesService {
           id,
         },
       });
-    });
+    }, { timeout: 30000 });
   }
 
   // Esta funcion se usa para borrar la remission SIN DEVOLVER los componentes al stock

@@ -1,63 +1,142 @@
-import { ConsoleLogger, Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CreateCompranetDto } from './dto/create-compranet.dto';
-import { UpdateCompranetDto } from './dto/update-compranet.dto';
+import * as cron from 'node-cron';
 const fs = require('fs');
-import * as path from 'path';
 import axios from 'axios';
 
 @Injectable()
 export class CompranetService {
-  create(createCompranetDto: CreateCompranetDto) {
-    return 'This action adds a new compranet';
+  private readonly logger = new Logger(CompranetService.name);
+  
+  constructor() {
+    this.scheduleDailyTask();
   }
 
-  private readonly PROCEDIMIENTOS_PATH = path.join(__dirname, 'data/procedimientos.json');
+  private readonly vocabulary = [
+    'insumos',
+    'osteosíntesis',
+    'protesis',
+    'endoprotesis',
+    'artoscropia',
+    'reemplazo',
+    'articular',
+    'trauma',
+    'maxiliar',
+    'maxilofacial',
+    'placas',
+    'laboratorio',
+    'prótesis',
+    'cadera',
+    'hombro',
+    'rodilla',
+    'tornillos',
+    'clavos',
+    'fijadores',
+    'columna',
+  ]; 
+  
+  private readonly vocabularyRelevant = [
+    'osteosíntesis',
+    'protesis',
+    'endoprotesis',
+  ];
 
-  async checkFileExists(filePath: string) {
-    console.log(this.PROCEDIMIENTOS_PATH);
-    try {
-      await fs.promises.access(filePath, fs.constants.F_OK);
-      console.log('El archivo existe');
-    } catch (err) {
-      console.error('El archivo no existe');
+
+  async scheduleDailyTask() {
+    cron.schedule('6 18 * * *', () => {
+      this.handleDailyTask();
+    });
+  }
+  
+  async handleDailyTask() {
+    this.logger.log('Executing daily task at 9:00 AM');
+    
+    await this.getProcedimientos(true)
+  }
+  
+  private async getProcedimientos(reload = false) {
+    if (fs.existsSync('procedimientos.json') && !reload) {
+      console.log('Reading from file');
+      return JSON.parse(fs.readFileSync('procedimientos.json'));
+    } else {
+      console.log('Fetching from API');
+      const response = await axios.get(
+        'https://upcp-cnetservicios.hacienda.gob.mx/eiza/proveedor/procedimientos-licitante/?limit=400',
+        {
+          headers: {
+            Accept: 'application/json, text/plain, */*',
+            Authorization: `Bearer ${process.env.TOKEN_COMPRANET}`,
+            'User-Agent': 'Thunder Client (https://www.thunderclient.com)',
+            'Accept-Language': 'es-419,es;q=0.9,es-ES;q=0.8,en;q=0.7,en-GB;q=0.6,en-US;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br, zstd',
+          },
+        },
+      );
+      const procedimientos = response.data.results;
+
+      // limpieza de datos
+      let procedimientosCleaned = procedimientos.map((procedimiento: any) => {
+        const descripcionCleaned = procedimiento.descripcion
+          .toLowerCase()
+          .replace(/[^a-zA-Z\s]/g, '')
+          .split(' ')
+          .filter((word: string) => word.length > 1);
+        const nameCleaned = procedimiento.nombre_procedimiento
+          .toLowerCase()
+          .replace(/[^a-zA-Z\s]/g, '')
+          .split(' ')
+          .filter((word: string) => word.length > 1);
+
+        return {
+          ...procedimiento,
+          textToProcess: [...nameCleaned, ...descripcionCleaned],
+        };
+      });
+
+      fs.writeFileSync(
+        'procedimientos.json',
+        JSON.stringify(procedimientosCleaned),
+      );
+
+      return procedimientosCleaned;
     }
   }
 
-  private async getProcedimientos() {
-    this.checkFileExists(this.PROCEDIMIENTOS_PATH);
-    // const response = await axios.get(
-    //   'https://upcp-cnetservicios.hacienda.gob.mx/eiza/proveedor/procedimientos-licitante/?limit=400',
-    //   {
-    //     headers: {
-    //       Accept: 'application/json, text/plain, */*',
-    //       Authorization: `Bearer ${process.env.TOKEN_COMPRANET}`,
-    //       'User-Agent': 'Thunder Client (https://www.thunderclient.com)',
-    //       'Accept-Language': 'gzip, deflate, br, zstd',
-    //       'Accept-Encoding': 'gzip, deflate, br, zstd',
-    //     },
-    //   },
-    // );
-    // const { data: procedimientos } = response;
-    // fs.writeFileSync('./src/compranet/data/procedimientos.json', JSON.stringify(procedimientos));
-    // return procedimientos;
-    return [];
-  }
+  async findAllProcedimientos() {
+    let procedimientos: Array<any> = await this.getProcedimientos();
 
-  async findAll() {
-    let procedimientos = await this.getProcedimientos();
+    const procedimientosFiltered = procedimientos.filter((procedimiento) => {
+      const textToProcess = procedimiento.textToProcess;
+      const intersection = textToProcess.filter((word) =>
+        this.vocabulary.includes(word),
+      );
+      return intersection.length > 0;
+    });
 
-    console.log(procedimientos);
-  }
+    const procedimientosRelevant = procedimientosFiltered.filter(
+      (procedimiento) => {
+        const textToProcess = procedimiento.textToProcess;
+        const intersection = textToProcess.filter((word) =>
+          this.vocabularyRelevant.includes(word),
+        );
+        return intersection.length > 0;
+      },
+    );
 
-  findOne(id: number) {
-    return `This action returns a #${id} compranet`;
-  }
+    const response = {
+      procedimientosFiltered: {
+        count: procedimientosFiltered.length,
+        data: procedimientosFiltered,
+      },
+      procedimientosRelevant: {
+        count: procedimientosRelevant.length,
+        data: procedimientosRelevant,
+      },
+    };
 
-  update(id: number, updateCompranetDto: UpdateCompranetDto) {
-    return `This action updates a #${id} compranet`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} compranet`;
+    console.log(response);
+    
+    return response
+    
   }
 }

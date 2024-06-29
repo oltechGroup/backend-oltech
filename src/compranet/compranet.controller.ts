@@ -7,28 +7,8 @@ import { UpdateCompranetDto } from './dto/update-compranet.dto';
 export class CompranetController {
   constructor(private readonly compranetService: CompranetService) {}
 
-  @Post()
-  create(@Body() createCompranetDto: CreateCompranetDto) {
-    return this.compranetService.create(createCompranetDto);
-  }
-
   @Get()
   findAll() {
-    return this.compranetService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.compranetService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateCompranetDto: UpdateCompranetDto) {
-    return this.compranetService.update(+id, updateCompranetDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.compranetService.remove(+id);
+    return this.compranetService.findAllProcedimientos();
   }
 }

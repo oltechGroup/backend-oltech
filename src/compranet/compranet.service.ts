@@ -37,13 +37,14 @@ export class CompranetService {
   
   private readonly vocabularyRelevant = [
     'osteosíntesis',
+    'osteosintesis',
     'protesis',
     'endoprotesis',
   ];
 
 
   async scheduleDailyTask() {
-    cron.schedule('6 18 * * *', () => {
+    cron.schedule('0 9 * * *', () => {
       this.handleDailyTask();
     });
   }
@@ -66,7 +67,6 @@ export class CompranetService {
           headers: {
             Accept: 'application/json, text/plain, */*',
             Authorization: `Bearer ${process.env.TOKEN_COMPRANET}`,
-            'User-Agent': 'Thunder Client (https://www.thunderclient.com)',
             'Accept-Language': 'es-419,es;q=0.9,es-ES;q=0.8,en;q=0.7,en-GB;q=0.6,en-US;q=0.5',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
           },
@@ -134,9 +134,6 @@ export class CompranetService {
       },
     };
 
-    console.log(response);
-    
     return response
-    
   }
 }

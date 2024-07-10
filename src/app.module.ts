@@ -8,6 +8,7 @@ import { PartidasModule } from './partidas/partidas.module';
 import { SurgeriesModule } from './surgeries/surgeries.module';
 import { UsersModule } from './users/users.module';
 import { CompranetModule } from './compranet/compranet.module';
+import { MailsModule } from './mails/mails.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CompranetModule } from './compranet/compranet.module';
     SurgeriesModule,
     UsersModule,
     CompranetModule,
+    MailsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

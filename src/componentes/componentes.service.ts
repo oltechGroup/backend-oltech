@@ -70,31 +70,36 @@ export class ComponentesService {
     });
   }
 
-  findAllBySubcategory(
+  async findAllBySubcategory(
     params: {
       skip?: number;
       take?: number;
-      cursor?: Prisma.componentesWhereUniqueInput;
-      search?: string;
-      orderBy?: Prisma.componentesOrderByWithRelationInput;
+      sort?: string;
+      order?: string;
     },
     subcategory: string,
   ) {
-    const { skip, take, cursor, orderBy } = params;
+    const { sort, order } = params;
 
-    const componentes: any = this.prisma.$queryRaw`
-    SELECT 
-      componentes.*,
-      componentes_categories.name AS categoria
-    FROM
-      componentes
-    JOIN 
-      componentes_categories
-    ON 
-      componentes.category = componentes_categories.id
-    WHERE
-      componentes_categories.name = ${subcategory}
-    `;
+    const validSortColumns = ['measures', 'registration_date'];
+    const validOrders = ['ASC', 'DESC'];
+
+    // Asegúrate de que `sort` sea una columna válida
+    const sortColumn = validSortColumns.includes(sort)
+      ? sort
+      : 'registration_date';
+    const orderDirection = validOrders.includes(order.toUpperCase())
+      ? order.toUpperCase()
+      : 'DESC';
+
+      console.log(sortColumn, orderDirection);
+      
+    const componentes: any = await this.prisma.$queryRaw`
+      SELECT componentes.*, componentes_categories.name AS categoria
+      FROM componentes
+      JOIN componentes_categories ON componentes.category = componentes_categories.id
+      WHERE componentes_categories.name = ${subcategory}
+      ORDER BY componentes.${Prisma.sql([sortColumn])} ${Prisma.sql([orderDirection])};`;
 
     return componentes;
   }
@@ -897,74 +902,77 @@ export class ComponentesService {
   // Esta funcion se utiliza para cancelar una remision y devolver los componentes al stock
   // Para borrar una remision sin devolver los componentes al stock, se debe utilizar la funcion "deleteRemissionWhitoutStock"
   async removeRemission(id: string) {
-    await this.prisma.$transaction(async (prisma) => {
-      // Get components in remission
-      const componentsRemission =
-        await prisma.componentes_has_componentes_remisiones.findMany({
+    await this.prisma.$transaction(
+      async (prisma) => {
+        // Get components in remission
+        const componentsRemission =
+          await prisma.componentes_has_componentes_remisiones.findMany({
+            where: {
+              remision_id: id,
+            },
+            select: {
+              quantity: true,
+              componente_id: true,
+            },
+          });
+
+        // Update stock components
+        for (let componentRemission of componentsRemission) {
+          const stocksComponent = await prisma.componentes.findUnique({
+            where: {
+              id: componentRemission.componente_id,
+            },
+            select: {
+              stock: true,
+              remission_stock: true,
+            },
+          });
+
+          const newStock = stocksComponent.stock + componentRemission.quantity;
+          const newStockRemission =
+            stocksComponent.remission_stock - componentRemission.quantity;
+
+          await prisma.componentes.update({
+            where: {
+              id: componentRemission.componente_id,
+            },
+            data: {
+              stock: newStock,
+              remission_stock: newStockRemission,
+            },
+          });
+
+          // Add movement in inventory
+          await prisma.componentes_inventory.create({
+            data: {
+              id: uuid(),
+              quantity: componentRemission.quantity,
+              tipo_movimiento: TipoMovimiento.ENTRADA,
+              componentes: {
+                connect: {
+                  id: componentRemission.componente_id,
+                },
+              },
+            },
+          });
+        }
+
+        // Delete components in remission
+        await prisma.componentes_has_componentes_remisiones.deleteMany({
           where: {
             remision_id: id,
           },
-          select: {
-            quantity: true,
-            componente_id: true,
-          },
         });
 
-      // Update stock components
-      for (let componentRemission of componentsRemission) {
-        const stocksComponent = await prisma.componentes.findUnique({
+        // Delete remission
+        return prisma.componentes_remisiones.delete({
           where: {
-            id: componentRemission.componente_id,
-          },
-          select: {
-            stock: true,
-            remission_stock: true,
+            id,
           },
         });
-
-        const newStock = stocksComponent.stock + componentRemission.quantity;
-        const newStockRemission =
-          stocksComponent.remission_stock - componentRemission.quantity;
-
-        await prisma.componentes.update({
-          where: {
-            id: componentRemission.componente_id,
-          },
-          data: {
-            stock: newStock,
-            remission_stock: newStockRemission,
-          },
-        });
-
-        // Add movement in inventory
-        await prisma.componentes_inventory.create({
-          data: {
-            id: uuid(),
-            quantity: componentRemission.quantity,
-            tipo_movimiento: TipoMovimiento.ENTRADA,
-            componentes: {
-              connect: {
-                id: componentRemission.componente_id,
-              },
-            },
-          },
-        });
-      }
-
-      // Delete components in remission
-      await prisma.componentes_has_componentes_remisiones.deleteMany({
-        where: {
-          remision_id: id,
-        },
-      });
-
-      // Delete remission
-      return prisma.componentes_remisiones.delete({
-        where: {
-          id,
-        },
-      });
-    }, { timeout: 30000 });
+      },
+      { timeout: 30000 },
+    );
   }
 
   // Esta funcion se usa para borrar la remission SIN DEVOLVER los componentes al stock

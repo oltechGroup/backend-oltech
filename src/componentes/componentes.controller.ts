@@ -32,6 +32,8 @@ export class ComponentesController {
   async findAll(
     @Query('page') page: number = 1,
     @Query('search') search: string = '',
+    @Query('sort') sort: string = 'registration_date',
+    @Query('order') order: string = 'desc',
   ) {
     const perPage: number = 20;
     const normalizedSearch = search.toLowerCase();
@@ -59,7 +61,7 @@ export class ComponentesController {
       skip: (currentPage - 1) * perPage,
       search: normalizedSearch,
       orderBy: {
-        registration_date: 'desc',
+        [sort]: order,
       },
     });
 
@@ -327,9 +329,16 @@ export class ComponentesController {
 
   @Get('subcategory/:subcategory')
   @HttpCode(HttpStatus.OK)
-  async getAllBySubcategory(@Param('subcategory') subcategory: string) {
+  async getAllBySubcategory(
+    @Param('subcategory') subcategory: string,
+    @Query('sort') sort: string = 'registration_date',
+    @Query('order') order: string = 'desc',
+  ) {
     const componentes = await this.componentesService.findAllBySubcategory(
-      {},
+      {
+        sort,
+        order,
+      },
       subcategory,
     );
 
@@ -369,7 +378,10 @@ export class ComponentesController {
     @Param('idRemission') idRemission: string,
     @Body() component: any,
   ) {
-    return this.componentesService.addComponentRemission(idRemission, component);
+    return this.componentesService.addComponentRemission(
+      idRemission,
+      component,
+    );
   }
 
   @Delete('remove/component-remission/:idComponentRemission')

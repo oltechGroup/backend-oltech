@@ -1,17 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 import { v4 as uuid } from 'uuid';
-import { Prisma } from '@prisma/client';
+import { category_enum, Prisma } from '@prisma/client';
 import { CreateComponenteUsedDto } from './dto/create-componente-used.dto';
 import { CreateComponenteDto } from './dto/create-componente.dto';
 import { UpdateComponenteDto } from './dto/update-componente.dto';
 import { UpdateComponenteUsedDto } from './dto/update-componente-used.dto';
 import { CreateRemissionDto } from './dto/create-remission.dto';
+import { CreateComponenteArthexDto } from './dto/create-component-arthrex.dto';
 
 enum TipoMovimiento {
   ENTRADA = 'entrada',
   SALIDA = 'salida',
   REMISSION = 'remision',
+  BORRADO = 'borrado',
 }
 
 @Injectable()
@@ -24,8 +26,9 @@ export class ComponentesService {
     cursor?: Prisma.componentesWhereUniqueInput;
     search?: string;
     orderBy?: Prisma.componentesOrderByWithRelationInput;
+    categoryId?: string;
   }) {
-    const { skip, take, cursor, orderBy } = params;
+    const { skip, take, cursor, orderBy, categoryId } = params;
     return this.prisma.componentes.findMany({
       skip,
       take,
@@ -48,6 +51,7 @@ export class ComponentesService {
         stock: {
           gt: 0,
         },
+        category: categoryId ? categoryId : { not: category_enum.omma },
       },
       orderBy,
       select: {
@@ -59,6 +63,9 @@ export class ComponentesService {
         caducidad: true,
         componentes_categories: true,
         remission_stock: true,
+        nombre_comercial: true,
+        nombre_generico: true,
+        referencia: true,
         users: {
           select: {
             id: true,
@@ -92,13 +99,14 @@ export class ComponentesService {
       ? order.toUpperCase()
       : 'DESC';
 
-      console.log(sortColumn, orderDirection);
-      
+    console.log(sortColumn, orderDirection);
+
     const componentes: any = await this.prisma.$queryRaw`
       SELECT componentes.*, componentes_categories.name AS categoria
       FROM componentes
       JOIN componentes_categories ON componentes.category = componentes_categories.id
-      WHERE componentes_categories.name = ${subcategory}
+      WHERE componentes_categories.name = ${subcategory} 
+      AND componentes.category != '28'
       ORDER BY componentes.${Prisma.sql([sortColumn])} ${Prisma.sql([orderDirection])};`;
 
     return componentes;
@@ -110,8 +118,9 @@ export class ComponentesService {
     search?: string;
     where?: Prisma.componentesWhereInput;
     orderBy?: Prisma.componentesOrderByWithRelationInput;
+    category?: category_enum;
   }) {
-    const { skip, take, orderBy } = params;
+    const { skip, take, orderBy, category } = params;
     return this.prisma.componentes_used.findMany({
       skip,
       take,
@@ -133,6 +142,7 @@ export class ComponentesService {
             },
           ],
         },
+        category: category,
       },
       select: {
         id: true,
@@ -169,6 +179,7 @@ export class ComponentesService {
     cursor?: Prisma.componentes_inventoryWhereUniqueInput;
     search?: string;
     orderBy?: Prisma.componentes_inventoryOrderByWithRelationInput;
+    category?: category_enum;
   }) {
     const { skip, take, cursor, orderBy } = params;
     return this.prisma.componentes_inventory.findMany({
@@ -191,6 +202,7 @@ export class ComponentesService {
               },
             },
           ],
+          category: params.category,
         },
       },
       orderBy,
@@ -208,6 +220,8 @@ export class ComponentesService {
             lote: true,
             caducidad: true,
             componentes_categories: true,
+            nombre_comercial: true,
+            referencia: true,
           },
         },
       },
@@ -232,11 +246,14 @@ export class ComponentesService {
               },
             },
           ],
+          AND: {
+            category: category_enum.omma,
+          },
         },
       },
     });
   }
-  countAll({ search }): Promise<number> {
+  countAll({ search, categoryId }): Promise<number> {
     return this.prisma.componentes.count({
       where: {
         OR: [
@@ -253,6 +270,7 @@ export class ComponentesService {
             },
           },
         ],
+        category: categoryId,
         stock: {
           gt: 0,
         },
@@ -277,6 +295,9 @@ export class ComponentesService {
               },
             },
           ],
+          AND: {
+            category: category_enum.omma,
+          },
         },
       },
     });
@@ -293,6 +314,7 @@ export class ComponentesService {
             id: componenteUsed.componente_id,
           },
         },
+        category: category_enum.omma,
       },
     });
 
@@ -337,6 +359,7 @@ export class ComponentesService {
             id: user_id,
           },
         },
+        category: category_enum.omma,
       },
     });
   }
@@ -642,7 +665,13 @@ export class ComponentesService {
   }
 
   async getCategories() {
-    return this.prisma.componentes_categories.findMany();
+    return this.prisma.componentes_categories.findMany({
+      where: {
+        NOT: {
+          id: '28', // Arthrex
+        },
+      },
+    });
   }
 
   async updateStock(id: string, newStock: number, oldStock: number) {
@@ -660,6 +689,7 @@ export class ComponentesService {
             id,
           },
         },
+        category: category_enum.omma,
       },
     });
 
@@ -1142,6 +1172,8 @@ export class ComponentesService {
         componentes_categories
       ON
         componentes.category = componentes_categories.id
+      WHERE
+        componentes.category != '28'
       GROUP BY 
         categoria
       ORDER BY 
@@ -1176,6 +1208,8 @@ export class ComponentesService {
       componentes.category = componentes_categories.id
     WHERE 
       componentes_categories.name LIKE ${searchTerm}
+    AND
+      componentes.category != '28'
     GROUP BY
       componentes_categories.name
   `;
@@ -1385,5 +1419,138 @@ export class ComponentesService {
     });
 
     return newComponent;
+  }
+
+
+  
+  // ===================== SECTION TO COMPONENTES ARTHREX ===================== 
+
+
+
+  async countAllArthrex({ search }): Promise<number> {
+    return this.prisma.componentes.count({
+      where: {
+        OR: [
+          {
+            measures: {
+              contains: search,
+            },
+          },
+          {
+            componentes_categories: {
+              name: {
+                contains: search,
+              },
+            },
+          },
+        ],
+        stock: {
+          gt: 0,
+        },
+        category: '28',
+      },
+    });
+  }
+  
+  async addArthrexComponent(component: CreateComponenteArthexDto, user_id: string) {
+    const idCategoryArthrex: string = '28';
+    
+    // Add component
+    const idComponent = uuid();
+    const addComponent = await this.prisma.componentes.create({
+      data: {
+        id: idComponent,
+        nombre_comercial: component.nombre_comercial,
+        nombre_generico: component.nombre_generico,
+        referencia: component.referencia,
+        lote: component.lote,
+        caducidad: `${component.caducidad}T12:00:00Z`,
+        stock: component.stock,
+        componentes_categories: {
+          connect: {
+            id: idCategoryArthrex,
+          },
+        },
+      },
+    });
+
+    // Add movement in inventory
+    await this.prisma.componentes_inventory.create({
+      data: {
+        id: uuid(),
+        quantity: component.stock,
+        tipo_movimiento: TipoMovimiento.ENTRADA,
+        componentes: {
+          connect: {
+            id: idComponent,
+          },
+        },
+        category: category_enum.arthrex,
+      },
+    });
+
+    return addComponent;
+  }
+
+  async updateArthrexComponent(id: string, newDataComponente) {
+
+    const componentToUpdate = await this.prisma.componentes.findUnique({
+      where: {
+        id,
+      },
+      select: {
+        stock: true,
+        caducidad: true,
+      },
+    });
+
+    const quantity = Math.abs(newDataComponente.stock - componentToUpdate.stock);
+    const tipoMovimiento =
+      newDataComponente.stock < componentToUpdate.stock
+        ? TipoMovimiento.SALIDA
+        : TipoMovimiento.ENTRADA;
+
+    await this.prisma.componentes_inventory.create({
+      data: {
+        id: uuid(),
+        quantity,
+        tipo_movimiento: tipoMovimiento,
+        componentes: {
+          connect: {
+            id,
+          },
+        },
+        category: category_enum.arthrex,
+      },
+    });
+
+    const updateQuery = await this.prisma.componentes.update({
+      where: {
+        id,
+      },
+      data: {
+        nombre_comercial: newDataComponente.nombre_comercial,
+        nombre_generico: newDataComponente.nombre_generico,
+        referencia: newDataComponente.referencia,
+        lote: newDataComponente.lote,
+        caducidad: 
+        newDataComponente.caducidad.length > 10
+        ? componentToUpdate.caducidad
+        : `${newDataComponente.caducidad}T12:00:00Z`,
+        stock: newDataComponente.stock,
+      },
+    });
+    
+    return updateQuery;
+  }
+
+  async deleteArthrexComponent(id: string) {
+    const deleteQuery = await this.prisma.componentes.delete({
+      where: {
+        id,
+      },
+    });
+
+    return deleteQuery;
   }
 }

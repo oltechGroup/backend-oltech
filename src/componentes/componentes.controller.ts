@@ -22,6 +22,8 @@ import { UpdateComponenteDto } from './dto/update-componente.dto';
 import { UpdateComponenteUsedDto } from './dto/update-componente-used.dto';
 import { CreateRemissionDto } from './dto/create-remission.dto';
 import { FinalizeRemissionDto } from './dto/finalize-remission.dto';
+import { CreateComponenteArthexDto } from './dto/create-component-arthrex.dto';
+import { category_enum } from '@prisma/client';
 
 @Controller('componentes')
 export class ComponentesController {
@@ -34,6 +36,7 @@ export class ComponentesController {
     @Query('search') search: string = '',
     @Query('sort') sort: string = 'registration_date',
     @Query('order') order: string = 'desc',
+    @Query('category') category: string = '',
   ) {
     const perPage: number = 20;
     const normalizedSearch = search.toLowerCase();
@@ -42,6 +45,7 @@ export class ComponentesController {
 
     const totalCount = await this.componentesService.countAll({
       search: normalizedSearch,
+      categoryId: category,
     });
 
     const info = {
@@ -63,6 +67,7 @@ export class ComponentesController {
       orderBy: {
         [sort]: order,
       },
+      categoryId: category,
     });
 
     return new ResponsePagination<{}>(info, componentes);
@@ -73,6 +78,7 @@ export class ComponentesController {
   async findAllUsed(
     @Query('page') page: number = 1,
     @Query('search') search: string = '',
+    @Query('category') category: category_enum = category_enum.omma,
   ) {
     const perPage: number = 20;
     const normalizedSearch = search.toLowerCase();
@@ -101,6 +107,7 @@ export class ComponentesController {
       orderBy: {
         registration_date: 'desc',
       },
+      category: category,
     });
 
     return new ResponsePagination<{}>(info, componentesUsed);
@@ -111,6 +118,7 @@ export class ComponentesController {
   async findAllInventory(
     @Query('page') page: number = 1,
     @Query('search') search: string = '',
+    @Query('category') category: category_enum = category_enum.omma,
   ) {
     const perPage: number = 20;
     const normalizedSearch = search.toLowerCase();
@@ -139,6 +147,7 @@ export class ComponentesController {
       orderBy: {
         fecha_movimiento: 'desc',
       },
+      category: category,
     });
 
     return new ResponsePagination<{}>(info, componentesUsed);
@@ -392,5 +401,31 @@ export class ComponentesController {
     return this.componentesService.removeOneComponentRemission(
       idComponentRemission,
     );
+  }
+
+  @Post('arthrex/add')
+  @HttpCode(HttpStatus.CREATED)
+  async createArthrexComponent(
+    @Body() componente: CreateComponenteArthexDto,
+    @Req() request: any,
+  ) {
+    const { user } = request;
+
+    return this.componentesService.addArthrexComponent(componente, user.sub);
+  }
+
+  @Put('arthrex/update/:id')
+  @HttpCode(HttpStatus.OK)
+  updateArthrex(
+    @Param('id') id: string,
+    @Body() updateComponenteDto: UpdateComponenteDto,
+  ) {
+    return this.componentesService.updateArthrexComponent(id, updateComponenteDto);
+  }
+
+  @Delete('arthrex/delete/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeArthrex(@Param('id') id: string) {
+    return this.componentesService.deleteArthrexComponent(id);
   }
 }
